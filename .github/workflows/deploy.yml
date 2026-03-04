@@ -16,8 +16,20 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
+            set -e
             cd /opt/attendance_check_backend
-            git pull origin main
-            docker compose up --build -d
+
+            git fetch origin main
+            git reset --hard origin/main
+
+            docker compose pull
+            docker compose up --build -d --remove-orphans
+
+            echo "Waiting for API to be ready..."
+            sleep 5
+
             docker compose exec -T api alembic upgrade head
+
+            docker image prune -f
+
             echo "Deployed successfully!"
