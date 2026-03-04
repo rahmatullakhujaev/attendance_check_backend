@@ -5,6 +5,7 @@ from sqladmin import Admin, ModelView
 from sqladmin.authentication import AuthenticationBackend
 from starlette.requests import Request
 from starlette.middleware.sessions import SessionMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 
 from app.core.security import verify_password
 from app.core.config import get_settings
@@ -32,6 +33,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Attendance System API",
     version="1.0.0",
+    root_path="/",
     lifespan=lifespan,
 )
 
@@ -64,6 +66,7 @@ def health():
 
 
 app.add_middleware(SessionMiddleware, secret_key=settings.SECRET_KEY)
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=["*"])
 
 class AdminAuth(AuthenticationBackend):
     async def login(self, request: Request) -> bool:
