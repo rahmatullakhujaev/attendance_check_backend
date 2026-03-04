@@ -37,7 +37,7 @@ app = FastAPI(
 )
 
 app.add_middleware(SessionMiddleware, secret_key=settings.SECRET_KEY)
-app.add_middleware(TrustedHostMiddleware, allowed_hosts=["*"])
+# app.add_middleware(TrustedHostMiddleware, allowed_hosts=["*"])
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
