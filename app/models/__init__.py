@@ -38,6 +38,9 @@ class Instructor(Base):
 
     groups: Mapped[list["Group"]] = relationship("Group", back_populates="instructor")
 
+    def __str__(self):
+        return f"Ins {self.first_name}{self.last_name}"
+
 
 # ── Group ─────────────────────────────────────────────────────────────────────
 
@@ -52,6 +55,9 @@ class Group(Base):
     instructor:   Mapped["Instructor"]        = relationship("Instructor", back_populates="groups")
     participants: Mapped[list["Participant"]] = relationship("Participant", back_populates="group")
     lectures:     Mapped[list["Lecture"]]     = relationship("Lecture", back_populates="group")
+
+    def __str__(self):
+        return f"{self.id}_{self.name} ({self.course or 'no course'})"
 
 
 # ── Student ───────────────────────────────────────────────────────────────────
@@ -73,6 +79,9 @@ class Student(Base):
 
     participants: Mapped[list["Participant"]] = relationship("Participant", back_populates="student")
 
+    def __str__(self):
+        return f"{self.first_name} {self.last_name} [{self.student_id}]"
+
 
 # ── Participant (student in a group) ──────────────────────────────────────────
 
@@ -86,6 +95,9 @@ class Participant(Base):
     group:   Mapped["Group"]   = relationship("Group", back_populates="participants")
     student: Mapped["Student"] = relationship("Student", back_populates="participants")
 
+    def __str__(self):
+        return f"Participant: {self.group_id}:{self.student_id}"
+
 
 # ── Lecture ───────────────────────────────────────────────────────────────────
 
@@ -98,6 +110,9 @@ class Lecture(Base):
 
     group:         Mapped["Group"]              = relationship("Group", back_populates="lectures")
     participations: Mapped[list["Participation"]] = relationship("Participation", back_populates="lecture")
+
+    def __str__(self):
+        return f"Lecture #{self.group_id} — {self.time.strftime('%Y-%m-%d %H:%M')}"
 
 
 # ── Participation (attendance record) ────────────────────────────────────────
@@ -121,3 +136,17 @@ class Participation(Base):
 
     lecture:     Mapped["Lecture"]      = relationship("Lecture", back_populates="participations")
     participant: Mapped["Participant"]  = relationship("Participant")
+
+    def __str__(self):
+        return f"Participation #{self.id} — {self.status.value}"
+
+
+class SuperUser(Base):
+    __tablename__ = "superuser"
+
+    id:       Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    email:    Mapped[str] = mapped_column(String(200), unique=True, index=True)
+    password: Mapped[str] = mapped_column(String(255))
+
+    def __str__(self):
+        return self.email
