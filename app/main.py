@@ -33,13 +33,14 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Attendance System API",
     version="1.0.0",
-    root_path="/",
     lifespan=lifespan,
 )
 
+app.add_middleware(SessionMiddleware, secret_key=settings.SECRET_KEY)
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=["*"])
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],   # tighten this in production
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -47,7 +48,6 @@ app.add_middleware(
 
 # ── Routers ───────────────────────────────────────────────────────────────────
 app.include_router(auth.router)
-# More routers added here as we build features:
 app.include_router(groups.router)
 app.include_router(students.router)
 """
@@ -64,9 +64,6 @@ app.include_router(attendance.router)
 def health():
     return {"status": "ok", "embeddings_loaded": len(embedding_cache.cache)}
 
-
-app.add_middleware(SessionMiddleware, secret_key=settings.SECRET_KEY)
-app.add_middleware(TrustedHostMiddleware, allowed_hosts=["*"])
 
 class AdminAuth(AuthenticationBackend):
     async def login(self, request: Request) -> bool:
@@ -90,9 +87,11 @@ class AdminAuth(AuthenticationBackend):
         request.session.clear()
         return True
 
+
 class SuperUserAdmin(ModelView, model=SuperUser):
     column_list = [SuperUser.id, SuperUser.email]
     can_delete = True
+
 
 class InstructorAdmin(ModelView, model=Instructor):
     column_list = [Instructor.id, Instructor.first_name, Instructor.last_name, Instructor.email, Instructor.university]
@@ -125,7 +124,6 @@ class ParticipationAdmin(ModelView, model=Participation):
     column_searchable_list = [Participation.status]
 
 
-# Add these lines after app = FastAPI(...) and after middleware
 admin = Admin(
     app,
     engine,
