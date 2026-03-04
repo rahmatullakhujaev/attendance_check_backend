@@ -16,7 +16,7 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
-            cd ~/attendance_backend
+            cd /opt/attendance_check_backend
             git pull origin main
             docker compose up --build -d
             docker compose exec -T api alembic upgrade head
