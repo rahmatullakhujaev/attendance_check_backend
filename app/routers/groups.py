@@ -1,9 +1,14 @@
+import openpyxl
+from openpyxl.styles import PatternFill, Font, Alignment
+from fastapi.responses import StreamingResponse
+import io
+from datetime import timezone
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.security import get_current_instructor
-from app.models import Group, Participant, Student
+from app.models import Group, Participant, Student, Lecture, Participation
 from app.schemas import GroupCreate, GroupUpdate, GroupResponse
 
 router = APIRouter(prefix="/groups", tags=["groups"])
@@ -118,6 +123,146 @@ def add_participant(
     db.add(Participant(group_id=group_id, student_id=student.id))
     db.commit()
     return {"ok": True}
+
+@router.get("/{group_id}/statistics/excel")
+def export_statistics_excel(
+    group_id: int,
+    db: Session = Depends(get_db),
+    instructor=Depends(get_current_instructor),
+):
+    group = _get_group_or_404(group_id, instructor.id, db)
+
+    # Get all lectures for this group ordered by time
+    lectures = db.query(Lecture).filter(
+        Lecture.group_id == group_id
+    ).order_by(Lecture.time).all()
+
+    # Get all participants
+    participants = db.query(Participant).filter(
+        Participant.group_id == group_id
+    ).all()
+
+    # Build attendance matrix
+    # {participant_id: {lecture_id: status}}
+    matrix = {}
+    for p in participants:
+        matrix[p.id] = {}
+
+    for lecture in lectures:
+        participations = db.query(Participation).filter(
+            Participation.lecture_id == lecture.id
+        ).all()
+        for part in participations:
+            if part.participant_id in matrix:
+                matrix[part.participant_id][lecture.id] = part.status.value
+
+    # Create Excel
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Attendance"
+
+    # Styles
+    header_fill    = PatternFill("solid", fgColor="6C63FF")
+    present_fill   = PatternFill("solid", fgColor="1E7E34")
+    absent_fill    = PatternFill("solid", fgColor="C0392B")
+    late_fill      = PatternFill("solid", fgColor="E67E22")
+    header_font    = Font(bold=True, color="FFFFFF")
+    center         = Alignment(horizontal="center", vertical="center")
+
+    # Header row
+    headers = ["#", "Full Name", "Student ID"]
+    for lecture in lectures:
+        t = lecture.time
+        headers.append(
+            f"{t.day:02d}/{t.month:02d}/{t.year}\n{t.hour:02d}:{t.minute:02d}"
+        )
+    headers.append("Present")
+    headers.append("Absent")
+    headers.append("Late")
+
+    for col, header in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col, value=header)
+        cell.fill      = header_fill
+        cell.font      = header_font
+        cell.alignment = center
+
+    ws.row_dimensions[1].height = 40
+
+    # Data rows
+    for row_idx, participant in enumerate(participants, 2):
+        student = participant.student
+        attendance = matrix.get(participant.id, {})
+
+        present_count = sum(1 for s in attendance.values() if s == "present")
+        absent_count  = sum(1 for s in attendance.values() if s == "absent")
+        late_count    = sum(1 for s in attendance.values() if s == "late")
+
+        # # column
+        ws.cell(row=row_idx, column=1, value=row_idx - 1).alignment = center
+
+        # Full name
+        ws.cell(row=row_idx, column=2,
+                value=f"{student.first_name} {student.last_name}")
+
+        # Student ID
+        ws.cell(row=row_idx, column=3,
+                value=student.student_id).alignment = center
+
+        # Lecture columns
+        for col_idx, lecture in enumerate(lectures, 4):
+            status = attendance.get(lecture.id, "absent")
+            if status == "present":
+                symbol = "+"
+                fill   = present_fill
+            elif status == "late":
+                symbol = "late"
+                fill   = late_fill
+            else:
+                symbol = "-"
+                fill   = absent_fill
+
+            cell           = ws.cell(row=row_idx, column=col_idx, value=symbol)
+            cell.fill      = fill
+            cell.font      = Font(color="FFFFFF", bold=True)
+            cell.alignment = center
+
+        # Summary columns
+        ws.cell(row=row_idx, column=len(lectures) + 4,
+                value=present_count).alignment = center
+        ws.cell(row=row_idx, column=len(lectures) + 5,
+                value=absent_count).alignment  = center
+        ws.cell(row=row_idx, column=len(lectures) + 6,
+                value=late_count).alignment    = center
+
+    # Column widths
+    ws.column_dimensions["A"].width = 5
+    ws.column_dimensions["B"].width = 25
+    ws.column_dimensions["C"].width = 15
+    for col_idx in range(4, len(lectures) + 4):
+        ws.column_dimensions[
+            openpyxl.utils.get_column_letter(col_idx)
+        ].width = 14
+    ws.column_dimensions[
+        openpyxl.utils.get_column_letter(len(lectures) + 4)
+    ].width = 10
+    ws.column_dimensions[
+        openpyxl.utils.get_column_letter(len(lectures) + 5)
+    ].width = 10
+    ws.column_dimensions[
+        openpyxl.utils.get_column_letter(len(lectures) + 6)
+    ].width = 10
+
+    # Save to buffer
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+
+    filename = f"{group.name}_attendance.xlsx".replace(" ", "_")
+    return StreamingResponse(
+        buffer,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
 
 
 def _get_group_or_404(group_id: int, instructor_id: int, db: Session) -> Group:
