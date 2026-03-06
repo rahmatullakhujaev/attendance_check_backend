@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.security import get_current_instructor
-from app.models import Group, Participant
+from app.models import Group, Participant, Student
 from app.schemas import GroupCreate, GroupUpdate, GroupResponse
 
 router = APIRouter(prefix="/groups", tags=["groups"])
@@ -98,6 +98,27 @@ def list_participants(
         }
         for p in participants
     ]
+
+@router.post("/{group_id}/participants/add", status_code=201)
+def add_participant(
+    group_id: int,
+    payload: dict,
+    db: Session = Depends(get_db),
+    instructor=Depends(get_current_instructor),
+):
+    group = _get_group_or_404(group_id, instructor.id, db)
+    student = db.query(Student).filter(Student.id == payload["student_id"]).first()
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+    existing = db.query(Participant).filter(
+        Participant.group_id == group_id,
+        Participant.student_id == student.id,
+    ).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Student already in group")
+    db.add(Participant(group_id=group_id, student_id=student.id))
+    db.commit()
+    return {"ok": True}
 
 
 def _get_group_or_404(group_id: int, instructor_id: int, db: Session) -> Group:
