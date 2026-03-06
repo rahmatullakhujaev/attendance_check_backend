@@ -88,12 +88,11 @@ def list_participants(
     )
     return [
         {
-            "id":         p.id,
-            "group_id":   p.group_id,
-            "student_id": p.student.student_id,
+            "id": p.student.id,  # internal DB id for photo upload
+            "student_id": p.student.student_id,  # university ID
             "first_name": p.student.first_name,
-            "last_name":  p.student.last_name,
-            "photo":      p.student.photo,
+            "last_name": p.student.last_name,
+            "photo": p.student.photo,
             "has_embedding": p.student.embedding is not None,
         }
         for p in participants
