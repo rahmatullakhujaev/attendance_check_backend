@@ -1,4 +1,7 @@
 import os
+import zipfile
+import io
+from pathlib import Path
 import shutil
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
@@ -257,5 +260,51 @@ async def import_from_excel(
             results["added_to_group"].append(sid)
         else:
             results["already_in_group"].append(sid)
+
+    return results
+
+@router.post("/import/zip")
+async def import_photos_zip(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    instructor=Depends(get_current_instructor),
+):
+    contents = await file.read()
+    results = {"updated": [], "not_found": [], "face_errors": []}
+
+    with zipfile.ZipFile(io.BytesIO(contents)) as z:
+        for name in z.namelist():
+            stem = Path(name).stem
+            if not stem.isdigit():
+                continue
+
+            student_id = int(stem)
+            student = db.query(Student).filter(
+                Student.student_id == student_id
+            ).first()
+
+            if not student:
+                results["not_found"].append(student_id)
+                continue
+
+            try:
+                ext = Path(name).suffix or ".jpg"
+                photo_path = os.path.join(
+                    settings.STORAGE_PATH, f"{student.id}{ext}"
+                )
+                os.makedirs(settings.STORAGE_PATH, exist_ok=True)
+                with open(photo_path, "wb") as f:
+                    f.write(z.read(name))
+
+                student.photo = photo_path
+                db.commit()
+                _generate_and_save_embedding(student, db)
+                results["updated"].append(student_id)
+
+            except Exception as e:
+                results["face_errors"].append({
+                    "student_id": student_id,
+                    "error": str(e)
+                })
 
     return results
