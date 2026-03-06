@@ -66,15 +66,31 @@ def get_lecture(
     return _get_lecture_or_404(lecture_id, instructor.id, db)
 
 
-@router.get("/{lecture_id}/attendance", response_model=list[ParticipationResponse])
+@router.get("/{lecture_id}/attendance")
 def get_attendance(
     lecture_id: int,
     db: Session = Depends(get_db),
     instructor=Depends(get_current_instructor),
 ):
-    """Get full attendance report for a lecture."""
     _get_lecture_or_404(lecture_id, instructor.id, db)
-    return db.query(Participation).filter(Participation.lecture_id == lecture_id).all()
+    participations = db.query(Participation).filter(
+        Participation.lecture_id == lecture_id
+    ).all()
+
+    result = []
+    for p in participations:
+        student = p.participant.student
+        result.append({
+            "id":             p.id,
+            "lecture_id":     p.lecture_id,
+            "participant_id": p.participant_id,
+            "status":         p.status.value,
+            "confidence":     p.confidence,
+            "recognized_at":  p.recognized_at.isoformat() if p.recognized_at else None,
+            "student_name":   f"{student.first_name} {student.last_name}",
+            "student_id":     student.student_id,
+        })
+    return result
 
 
 @router.patch("/{lecture_id}/attendance/{participation_id}", response_model=ParticipationResponse)
